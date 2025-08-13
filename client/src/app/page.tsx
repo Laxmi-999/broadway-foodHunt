@@ -1,17 +1,29 @@
-'use client'
-import { NavigationMenuDemo } from '@/components/navbar'
-import React from 'react'
-import { useSelector } from 'react-redux'
+// app/page.tsx
+"use client"; // This page also needs to be a client component if it directly uses client-side hooks or components
 
-const Home = () => {
+import Navbar from "@/components/navbar";
+import { Button } from "@/components/ui/button";
+import dynamic from "next/dynamic";
+import { useMemo } from "react";
+
+export default function HomePage() {
+  const Map = useMemo(
+    () =>
+      dynamic(() => import("@/components/map-component"), {
+        loading: () => <p>Map is loading...</p>,
+        ssr: false, // This is crucial: disable server-side rendering for the map component
+      }),
+    []
+  );
+
+  const defaultPosition: [number, number] = [27.68592,  85.35032]; // Example coordinates
+
   return (
-    <div>
+    <div style={{ width: "100vw", height: "100vh" }}>
 
-      <NavigationMenuDemo/>
-      
-      
-      </div>
-  )
+      {" "}
+
+      <Map position={defaultPosition} zoom={14} />
+    </div>
+  );
 }
-
-export default Home
