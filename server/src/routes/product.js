@@ -53,29 +53,47 @@ productRouter.patch("/products/update/:id", async (req, res) => {
 //to get all product
 productRouter.get("/products", async (req, res) => {
   try {
+    const { sellerId, name, userId } = req.query;
     let products;
-    if (req.query?.sellerId) {
-      products = await Product.find({ sellerId: req.query?.sellerId })
-        .sort({ createdAt: -1 }) //sort the products based on their created at and decending order
+
+    if (sellerId) {
+      // 1. Filter by Seller ID directly in MongoDB
+      products = await Product.find({ sellerId })
+        .sort({ createdAt: -1 })
         .populate("sellerId", "name email phoneNumber");
-    } else if (req.query.name) {
-      const searchRegex = new RegExp(req.query.name, "i");
-      products = await Product.find({ name: searchRegex })
+
+    } else if (name) {
+      // 2. Handle single or comma-separated names (e.g. "Pizza,Burger" -> ["Pizza", "Burger"])
+      const searchTerms = name.split(",").map((item) => item.trim());
+      const regexArray = searchTerms.map((term) => new RegExp(term, "i"));
+
+      products = await Product.find({ name: { $in: regexArray } })
         .populate("sellerId")
         .populate("category");
-    } else if (req.query.userId) {
-      const user = await User.findById(req.query.userId);
-      const allProducts = await Product.find().populate("sellerId category");
-      products = allProducts.filter((item) => {
-        return user.userPreferences.includes(item.category._id);
-      });
+
+    } else if (userId) {
+      // 3. Filter directly in DB using MongoDB $in operator
+      const user = await User.findById(userId).select("userPreferences");
+
+      if (!user || !user.userPreferences?.length) {
+        return res.status(200).json([]);
+      }
+
+      products = await Product.find({ category: { $in: user.userPreferences } })
+        .populate("sellerId")
+        .populate("category");
+
     } else {
-      products = await Product.find().populate("sellerId").populate("category");
+      // 4. Default: fetch all products
+      products = await Product.find()
+        .populate("sellerId")
+        .populate("category");
     }
-    res.status(200).json(products);
+
+    return res.status(200).json(products);
   } catch (err) {
-    console.log(err);
-    res.status(500).json({ error: "Failed to fetch products" });
+    console.error("Error fetching products:", err);
+    return res.status(500).json({ error: "Failed to fetch products" });
   }
 });
 

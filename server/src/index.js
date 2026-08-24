@@ -9,11 +9,27 @@ import productRouter from "./routes/product.js";
 import orderRouter from "./routes/order.js";
 import categoryRouter from "./routes/category.js";
 import { Server } from "socket.io";
+
 dotenv.config();
+
+// async function checkModels() {
+//   try {
+//     const response = await fetch(
+//       `https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`
+//     );
+//     const data = await response.json();
+//     console.log("Supported Models:", data.models?.map((m) => m.name));
+//   } catch (err) {
+//     console.error("Failed to list models:", err);
+//   }
+// }
+
+// checkModels();
 
 const port = process.env.PORT;
 const app = express();
 const httpServer = createServer(app);
+
 
 
 const io = new Server(httpServer, { cors: { origin: "*" } });

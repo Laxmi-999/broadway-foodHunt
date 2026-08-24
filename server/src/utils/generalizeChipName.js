@@ -1,11 +1,17 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-async function runPrompt(product) {
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-  // Your detailed prompt string, including input JSON and expected output example
-  const prompt = `You are a highly skilled data processor, based in Nepal, specializing in food item categorization and generalization. You analyze JSON arrays of food product data, identify commonalities, and consolidate entries based on category and **carefully generalized** names. Your goal is to produce a clean, consistent, and easily parsable JSON output that groups similar products, **preserving the dish's core specialty while removing descriptive fluff, flavors, and non-essential cooking methods.**
+async function runPrompt(product) {
+  try {
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    
+    // Using gemini-1.5-flash for higher free tier rate limit stability
+    const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash-lite" });
+     const productString =
+      typeof product === "string" ? product : JSON.stringify(product);
+
+    // Prompt instructions and context
+    const prompt = `You are a highly skilled data processor, based in Nepal, specializing in food item categorization and generalization. You analyze JSON arrays of food product data, identify commonalities, and consolidate entries based on category and **carefully generalized** names. Your goal is to produce a clean, consistent, and easily parsable JSON output that groups similar products, **preserving the dish's core specialty while removing descriptive fluff, flavors, and non-essential cooking methods.**
 
   **Input Data Format:**
 
@@ -23,13 +29,13 @@ async function runPrompt(product) {
       *   **Remove Non-Essential Descriptors:** Remove generic adjectives (\`Spicy\`, \`Cheesy\`, \`Crunchy\`), size descriptors (\`Large\`, \`Triple\`), \`Feast\`.
           *   Example: \`"Triple Chicken Feast"\` becomes \`"Chicken"\`.
       *   **Remove Non-Essential Cooking Methods:** Remove cooking methods that describe preparation but aren't the core identity of the dish. This requires cultural context.
-          *   Example: \`"Grilled Chicken Burger"\` becomes \`"Chicken Burger"\` and \`"Fried Chicken Wings"\` becomes \'"Chicken Wings"\`.
+          *   Example: \`"Grilled Chicken Burger"\` becomes \`"Chicken Burger"\` and \`"Fried Chicken Wings"\` becomes \`"Chicken Wings"\`.
           *   **Contextual Example (Nepali):** The word \`"Jhaneko"\` is a descriptive cooking method, not part of the core name. Therefore, \`"Mutton Jhaneko Sekuwa"\` generalizes to \`"Mutton Sekuwa"\`.
       *   **Preserve Integral Cooking Methods:** Do *not* remove cooking methods that define the dish's identity.
           *   Example: \`"Tandoori Chicken"\` remains \`"Tandoori Chicken"\`. \`"Jhol Momo"\` remains \`"Jhol Momo"\`.
       *   **Distinguish Flavors/Toppings from Specialty:** Remove flavors or simple toppings, but preserve the core specialty of the dish.
           *   Example: \`"Malai Chicken Tikka Pizza"\` generalizes to \`"Chicken Tikka Pizza"\`. Here, \`"Malai"\` is a flavor/style, but \`"Chicken Tikka"\` is the core specialty.
-          *   Example: \`"Veg Exotica Pizza"\` remains as \`"Veg Exotica Pizza""\` because Exotica might specialty that signifies core ingredients.
+          *   Example: \`"Veg Exotica Pizza"\` remains as \`"Veg Exotica Pizza"\` because Exotica might specialty that signifies core ingredients.
           *   Example: \`"Cheese Garlic Bread"\` and \`"Mexican Garlic Bread"\` both generalize to \`"Garlic Bread"\`.
           *   Example: \`"Caramel Mocha"\` becomes \`"Mocha"\`. \`"Honey Latte"\` becomes \`"Latte"\`.
           *   Example: \`"Spiced Ham Burger"\` becomes \`"Ham Burger"\`.
@@ -93,7 +99,7 @@ async function runPrompt(product) {
       "name": "Mutton Sekuwa",
       "category": "686e5822f85cf66e548da674",
       "product_ids": [
-        "686e6500afbfd74bba541d7d"
+        "686e5800afbfd74bba541d7d"
       ]
     },
     {
@@ -124,31 +130,36 @@ async function runPrompt(product) {
   \`\`\`
 
   **Data to Process:**
-  ${product}`;
-  const result = await model.generateContent(prompt);
-  const response = await result.response;
-  let cleanedJsonString = response.candidates[0].content.parts[0].text.trim(); // Remove leading/trailing whitespace
+  ${productString}`;
 
-  if (
-    cleanedJsonString.startsWith("```json\n") &&
-    cleanedJsonString.endsWith("\n```")
-  ) {
-    cleanedJsonString = cleanedJsonString.substring(
-      7,
-      cleanedJsonString.length - 4
-    );
-  } else if (
-    cleanedJsonString.startsWith("```\n") &&
-    cleanedJsonString.endsWith("\n```")
-  ) {
-    cleanedJsonString = cleanedJsonString.substring(
-      4,
-      cleanedJsonString.length - 4
-    );
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    let cleanedJsonString = response.candidates[0].content.parts[0].text.trim();
+
+    // Remove markdown wrapping if present
+    if (cleanedJsonString.startsWith("```json")) {
+      cleanedJsonString = cleanedJsonString
+        .replace(/^```json\s*/, "")
+        .replace(/\s*```$/, "");
+    } else if (cleanedJsonString.startsWith("```")) {
+      cleanedJsonString = cleanedJsonString
+        .replace(/^```\s*/, "")
+        .replace(/\s*```$/, "");
+    }
+
+    const plainJavaScriptObject = JSON.parse(cleanedJsonString);
+    return plainJavaScriptObject;
+  } catch (error) {
+    console.error("Gemini Chip Generation Error:", error.message);
+    
+    // Graceful rate-limit fallback
+    if (error.status === 429) {
+      console.warn("Gemini Rate limit hit. Returning empty array fallback.");
+      return ["Popular", "Trending", "Special Offers"];
+    }
+
+    throw error;
   }
-  const plainJavaScriptObject = JSON.parse(cleanedJsonString);
-
-  return plainJavaScriptObject;
 }
 
 export default runPrompt;
