@@ -1,283 +1,444 @@
 "use client";
 
 import axios from "axios";
-import React, { useEffect, useState } from "react";
-import { TrendingUp, BarChart3, Users, ShoppingCart, Calendar } from "lucide-react";
-import { CartesianGrid, Line, LineChart, XAxis, LabelList, Pie, PieChart } from "recharts";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  TrendingUp,
+  TrendingDown,
+  BarChart3,
+  CheckCircle2,
+  ShoppingCart,
+  Clock,
+  RefreshCw,
+  Moon,
+  Sun,
+} from "lucide-react";
+import { Area, AreaChart, CartesianGrid, Pie, PieChart, XAxis, YAxis } from "recharts";
 
 import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardFooter,
-    CardHeader,
-    CardTitle,
-} from "@/components/ui/card";
-
-import {
-    ChartConfig,
-    ChartContainer,
-    ChartTooltip,
-    ChartTooltipContent,
+  ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
 } from "@/components/ui/chart";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
-const lineChartConfig = {
-    revenue: {
-        label: "Revenue",
-        color: "#FB5700",
-    },
-} satisfies ChartConfig;
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
-const chartConfig: ChartConfig = {
-    count: {
-        label: "Orders",
-    },
-    Pending: {
-        label: "Pending",
-        color: "#F6A719",
-    },
-    "In Progress": {
-        label: "In Progress",
-        color: "#FB5700",
-    },
-    Completed: {
-        label: "Completed",
-        color: "#10B981",
-    },
-    Cancelled: {
-        label: "Cancelled",
-        color: "#EF4444",
-    },
-    Booked: {
-        label: "Booked",
-        color: "#8B5CF6",
-    },
+type Order = {
+  createdAt: string;
+  status?: string;
+  price?: number;
 };
 
+type OrderData = { orders: Order[]; totalDbOrders: number };
+
+// ---------------------------------------------------------------------------
+// Design tokens — shared with the rest of the app (orange accent, neutral base)
+// ---------------------------------------------------------------------------
+
+const statusMeta: Record<string, { label: string; color: string }> = {
+  Pending: { label: "Pending", color: "#F6A719" },
+  "In Progress": { label: "In Progress", color: "#FB5700" },
+  Completed: { label: "Completed", color: "#10B981" },
+  Cancelled: { label: "Cancelled", color: "#EF4444" },
+  Booked: { label: "Booked", color: "#8B5CF6" },
+};
+
+const chartConfig: ChartConfig = {
+  count: { label: "Orders" },
+  ...Object.fromEntries(
+    Object.entries(statusMeta).map(([key, { label, color }]) => [key, { label, color }])
+  ),
+};
+
+const revenueChartConfig = {
+  revenue: { label: "Revenue", color: "#FB5700" },
+} satisfies ChartConfig;
+
+const formatMoney = (value: number) =>
+  `NPR ${value.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 const Dashboard = () => {
-    const [orderData, setOrderData] = useState({ orders: [], totalDbOrders: 0 });
+  const [orderData, setOrderData] = useState<OrderData>({ orders: [], totalDbOrders: 0 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [darkMode, setDarkMode] = useState(false);
 
-    useEffect(() => {
-        const fetchOrders = async () => {
-            try {
-                const response = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/orders`);
-                setOrderData(response.data);
-            } catch (error) {
-                console.error("Error fetching order data:", error);
-            }
-        };
+  const fetchOrders = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/orders`);
+      setOrderData(response.data);
+    } catch (err) {
+      console.error("Error fetching order data:", err);
+      setError("Failed to load dashboard data.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        fetchOrders();
-    }, []);
+  useEffect(() => {
+    fetchOrders();
+  }, []);
 
-    // 1. Get today's date and subtract 30 days
-    const oneMonthAgo = new Date();
-    oneMonthAgo.setDate(oneMonthAgo.getDate() - 30);
+  const toggleDarkMode = () => {
+    setDarkMode(!darkMode);
+    document.documentElement.classList.toggle("dark");
+  };
 
-    // 2. Filter orders from past 1 month
-    const recentOrders = orderData.orders.filter((order: any) => {
-        const createdAtDate = new Date(order.createdAt);
-        return createdAtDate >= oneMonthAgo;
+  // -------------------------------------------------------------------------
+  // Derived data
+  // -------------------------------------------------------------------------
+
+  const orders = orderData.orders ?? [];
+
+  // All-time KPI totals — the four headline cards should never disagree with
+  // each other, so they're all computed from the same unfiltered order list.
+  const totalOrders = orderData.totalDbOrders;
+  const totalRevenue = orders.reduce((sum, o) => sum + (o.price || 0), 0);
+  const completedOrders = orders.filter((o) => o.status === "Completed").length;
+  const pendingOrders = orders.filter((o) => o.status === "Pending").length;
+
+  // Last-30-days slice, used only for the "current distribution" donut so its
+  // "recent" framing stays honest rather than silently mixing scopes.
+  const recentOrders = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    return orders.filter((o) => new Date(o.createdAt) >= cutoff);
+  }, [orders]);
+
+  const statusData = useMemo(() => {
+    const counts: Record<string, number> = {};
+    recentOrders.forEach((o) => {
+      if (o.status) counts[o.status] = (counts[o.status] || 0) + 1;
     });
+    return Object.entries(statusMeta)
+      .map(([status, meta]) => ({ status, count: counts[status] || 0, fill: meta.color }))
+      .filter((d) => d.count > 0);
+  }, [recentOrders]);
 
-    // 3. Count statuses for filtered orders
-    const statusCounts: Record<string, number> = {};
-    recentOrders.forEach((order: any) => {
-        const status = order.status;
-        statusCounts[status] = (statusCounts[status] || 0) + 1;
+  const revenueData = useMemo(() => {
+    const monthlyTotals: Record<string, number> = {};
+    orders.forEach((o) => {
+      const month = new Date(o.createdAt).toLocaleString("default", { month: "short" });
+      monthlyTotals[month] = (monthlyTotals[month] || 0) + (o.price || 0);
     });
-
-    // 4. Define chartData using your defined colors
-    const statuses = [
-        { status: "Pending", fill: "#F6A719" },
-        { status: "In Progress", fill: "#FB5700" },
-        { status: "Completed", fill: "#10B981" },
-        { status: "Cancelled", fill: "#EF4444" },
-        { status: "Booked", fill: "#8B5CF6" },
+    const months = [
+      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
     ];
+    // Trim trailing months with no data yet so the line doesn't trail off
+    // into a flat, meaningless tail for months that haven't happened.
+    const currentMonthIndex = new Date().getMonth();
+    return months
+      .slice(0, currentMonthIndex + 1)
+      .map((month) => ({ month, revenue: monthlyTotals[month] || 0 }));
+  }, [orders]);
 
-    const chartData = statuses.map((item) => ({
-        status: item.status,
-        count: statusCounts[item.status] || 0,
-        fill: item.fill,
-    }));
+  const revenueTrend = useMemo(() => {
+    if (revenueData.length < 2) return null;
+    const last = revenueData[revenueData.length - 1].revenue;
+    const prev = revenueData[revenueData.length - 2].revenue;
+    if (prev === 0) return null;
+    return ((last - prev) / prev) * 100;
+  }, [revenueData]);
 
-    const generateMonthlyRevenue = () => {
-        const monthlyTotals: { [key: string]: number } = {};
+  const EmptyState = ({ label }: { label: string }) => (
+    <div className="flex h-[220px] items-center justify-center text-sm text-neutral-400 dark:text-neutral-500">
+      {label}
+    </div>
+  );
 
-        orderData.orders.forEach((order: any) => {
-            const date = new Date(order.createdAt);
-            const monthName = date.toLocaleString("default", { month: "long" });
-            if (!monthlyTotals[monthName]) {
-                monthlyTotals[monthName] = 0;
-            }
-            monthlyTotals[monthName] += order.price ;
-        });
+  // -------------------------------------------------------------------------
+  // Loading / error
+  // -------------------------------------------------------------------------
 
-        const allMonths = [
-            "January", "February", "March", "April", "May", "June",
-            "July", "August", "September", "October", "November", "December"
-        ];
-
-        return allMonths.map((month) => ({
-            month,
-            revenue: monthlyTotals[month] || 0,
-        }));
-    };
-
-    const lineChartData = generateMonthlyRevenue();
-
-    const totalOrders = orderData.totalDbOrders;
-    const totalRevenue = orderData.orders.reduce((sum: number, order: any) => sum + order.price, 0);
-    const completedOrders = statusCounts["Completed"] || 0;
-    const pendingOrders = statusCounts["Pending"] || 0;
-
+  if (loading) {
     return (
-        <div style={{ minHeight: "100vh", backgroundColor: "#FFFFFF", padding: "1.5rem" }}>
-            <div className="mb-8">
-                <h1 style={{ fontSize: "1.875rem", fontWeight: "bold", color: "#FB5700", marginBottom: "0.5rem" }}>Admin Dashboard</h1>
-                <p style={{ color: "#F6A719" }}>Monitor your business performance and analytics</p>
+      <div className="min-h-screen bg-neutral-50 p-6 dark:bg-neutral-950">
+        <Skeleton className="mb-2 h-8 w-56" />
+        <Skeleton className="mb-8 h-4 w-72" />
+        <div className="mb-8 grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full rounded-xl" />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+          <Skeleton className="h-[380px] w-full rounded-xl xl:col-span-2" />
+          <Skeleton className="h-[380px] w-full rounded-xl" />
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-neutral-50 p-6 dark:bg-neutral-950">
+        <div className="max-w-md rounded-xl border border-red-200 bg-red-50 p-5 text-center dark:border-red-900 dark:bg-red-900/30">
+          <p className="font-semibold text-red-800 dark:text-red-200">Something went wrong</p>
+          <p className="mt-1 text-sm text-red-700 dark:text-red-300">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Main render
+  // -------------------------------------------------------------------------
+
+  const stats = [
+    {
+      label: "Total Orders",
+      value: totalOrders.toLocaleString(),
+      sub: `${recentOrders.length} in the last 30 days`,
+      icon: ShoppingCart,
+      accent: "text-orange-600 bg-orange-50 dark:bg-orange-500/10",
+    },
+    {
+      label: "Total Revenue",
+      value: formatMoney(totalRevenue),
+      sub: `${formatMoney(revenueData[revenueData.length - 1]?.revenue || 0)} this month`,
+      icon: BarChart3,
+      accent: "text-amber-600 bg-amber-50 dark:bg-amber-500/10",
+    },
+    {
+      label: "Completed Orders",
+      value: completedOrders.toLocaleString(),
+      sub: totalOrders > 0 ? `${((completedOrders / totalOrders) * 100).toFixed(0)}% of all orders` : "—",
+      icon: CheckCircle2,
+      accent: "text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10",
+    },
+    {
+      label: "Pending Orders",
+      value: pendingOrders.toLocaleString(),
+      sub: "Awaiting action",
+      icon: Clock,
+      accent: "text-violet-600 bg-violet-50 dark:bg-violet-500/10",
+    },
+  ];
+
+  return (
+    <div className={cn("min-h-screen bg-neutral-50 dark:bg-neutral-950", darkMode && "dark")}>
+      <div className="p-6">
+        {/* Header */}
+        <div className="mb-8 flex flex-col gap-4 border-b border-neutral-200 pb-6 sm:flex-row sm:items-end sm:justify-between dark:border-neutral-800">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 sm:text-3xl dark:text-white">
+              Admin Dashboard
+            </h1>
+            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+              Monitor your business performance and analytics
+            </p>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={fetchOrders}
+              aria-label="Refresh"
+              className="grid h-9 w-9 place-items-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-white"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </button>
+            <button
+              onClick={toggleDarkMode}
+              aria-label="Toggle theme"
+              className="grid h-9 w-9 place-items-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-white"
+            >
+              {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
+
+        {/* KPI cards */}
+        <div className="mb-8 grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
+          {stats.map(({ label, value, sub, icon: Icon, accent }) => (
+            <div
+              key={label}
+              className="rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900"
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                  {label}
+                </p>
+                <span className={cn("grid h-8 w-8 place-items-center rounded-lg", accent)}>
+                  <Icon className="h-4 w-4" />
+                </span>
+              </div>
+              <p className="mt-3 text-2xl font-semibold tabular-nums text-neutral-900 dark:text-white">
+                {value}
+              </p>
+              <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">{sub}</p>
             </div>
+          ))}
+        </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                <Card className="relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-20 h-20 transform translate-x-8 -translate-y-8">
-                        <div className="w-full h-full rounded-full" style={{ backgroundColor: "#FB5700", opacity: 0.1 }}></div>
-                    </div>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle style={{ fontSize: "0.875rem", fontWeight: "500", color: "#FB5700" }}>Total Orders</CardTitle>
-                        <ShoppingCart className="h-4 w-4" style={{ color: "#FB5700" }} />
-                    </CardHeader>
-                    <CardContent>
-                        <div style={{ fontSize: "1.5rem", fontWeight: "bold", color: "#FB5700" }}>{totalOrders}</div>
-                    </CardContent>
-                </Card>
-
-                <Card className="relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-20 h-20 transform translate-x-8 -translate-y-8">
-                        <div className="w-full h-full rounded-full" style={{ backgroundColor: "#F6A719", opacity: 0.1 }}></div>
-                    </div>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle style={{ fontSize: "0.875rem", fontWeight: "500", color: "#FB5700" }}>Total Revenue</CardTitle>
-                        <BarChart3 className="h-4 w-4" style={{ color: "#F6A719" }} />
-                    </CardHeader>
-                    <CardContent>
-                        <div style={{ fontSize: "1.5rem", fontWeight: "bold", color: "#FB5700" }}>${totalRevenue.toLocaleString()}</div>
-                    </CardContent>
-                </Card>
-
-                <Card className="relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-20 h-20 transform translate-x-8 -translate-y-8">
-                        <div className="w-full h-full rounded-full" style={{ backgroundColor: "#10B981", opacity: 0.1 }}></div>
-                    </div>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle style={{ fontSize: "0.875rem", fontWeight: "500", color: "#FB5700" }}>Completed Orders</CardTitle>
-                        <Users className="h-4 w-4" style={{ color: "#10B981" }} />
-                    </CardHeader>
-                    <CardContent>
-                        <div style={{ fontSize: "1.5rem", fontWeight: "bold", color: "#FB5700" }}>{completedOrders}</div>
-                    </CardContent>
-                </Card>
-
-                <Card className="relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-20 h-20 transform translate-x-8 -translate-y-8">
-                        <div className="w-full h-full rounded-full" style={{ backgroundColor: "#F6A719", opacity: 0.1 }}></div>
-                    </div>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle style={{ fontSize: "0.875rem", fontWeight: "500", color: "#FB5700" }}>Pending Orders</CardTitle>
-                        <Calendar className="h-4 w-4" style={{ color: "#F6A719" }} />
-                    </CardHeader>
-                    <CardContent>
-                        <div style={{ fontSize: "1.5rem", fontWeight: "bold", color: "#FB5700" }}>{pendingOrders}</div>
-                    </CardContent>
-                </Card>
+        {/* Charts */}
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+          {/* Revenue overview */}
+          <div className="rounded-xl border border-neutral-200 bg-white p-6 xl:col-span-2 dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="mb-1 flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-orange-500" />
+              <h2 className="text-base font-semibold text-neutral-900 dark:text-white">
+                Revenue Overview
+              </h2>
             </div>
+            <p className="mb-5 text-xs text-neutral-500 dark:text-neutral-400">
+              Monthly revenue for the current year
+            </p>
 
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-                <div className="xl:col-span-2">
-                    <Card className="shadow-lg border-0">
-                        <CardHeader className="border-b pb-4">
-                            <div className="flex items-center space-x-2">
-                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: "#FB5700" }}></div>
-                                <CardTitle style={{ fontSize: "1.25rem", fontWeight: "600", color: "#FB5700" }}>Revenue Overview</CardTitle>
-                            </div>
-                            <CardDescription style={{ color: "#F6A719" }}>Monthly revenue for the current year</CardDescription>
-                        </CardHeader>
-                        <CardContent className="pt-6">
-                            <ChartContainer config={lineChartConfig}>
-                                <LineChart data={lineChartData} margin={{ left: 12, right: 12, top: 12, bottom: 12 }}>
-                                    <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#F6A719" />
-                                    <XAxis
-                                        dataKey="month"
-                                        tickLine={true}
-                                        axisLine={false}
-                                        tickMargin={8}
-                                        tick={{ fill: "#FB5700", fontSize: 12 }}
-                                        tickFormatter={(value) => value.slice(0, 2)}
-                                    />
-                                    <ChartTooltip
-                                        cursor={{ stroke: "#FB5700", strokeWidth: 1, strokeDasharray: "4 4" }}
-                                        content={<ChartTooltipContent hideLabel />}
-                                    />
-                                    <Line
-                                        dataKey="revenue"
-                                        type="monotone"
-                                        stroke="#FB5700"
-                                        strokeWidth={3}
-                                        dot={{ fill: "#FB5700", strokeWidth: 2, r: 4 }}
-                                        activeDot={{ r: 6, stroke: "#FB5700", strokeWidth: 2, fill: "#FFFFFF" }}
-                                    />
-                                </LineChart>
-                            </ChartContainer>
-                        </CardContent>
-                        <CardFooter className="flex-col items-start gap-2 text-sm border-t pt-4">
-                            <div className="flex gap-2 leading-none font-medium" style={{ color: "#FB5700" }}>
-                                Trending up by 5.2% this month <TrendingUp className="h-4 w-4" />
-                            </div>
-                            <div style={{ color: "#F6A719" }}>
-                                Showing total revenue for the whole year
-                            </div>
-                        </CardFooter>
-                    </Card>
+            {revenueData.some((d) => d.revenue > 0) ? (
+              <ChartContainer config={revenueChartConfig} className="h-[260px] w-full">
+                <AreaChart data={revenueData} margin={{ left: 12, right: 12, top: 10, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="adminRevenueFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#FB5700" stopOpacity={0.25} />
+                      <stop offset="100%" stopColor="#FB5700" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid vertical={false} stroke={darkMode ? "#333" : "#eee"} />
+                  <XAxis
+                    dataKey="month"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    fontSize={12}
+                    stroke={darkMode ? "#a3a3a3" : "#737373"}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    fontSize={12}
+                    stroke={darkMode ? "#a3a3a3" : "#737373"}
+                    tickFormatter={(v) => (v >= 1000 ? `${v / 1000}k` : v)}
+                  />
+                  <ChartTooltip
+                    cursor={{ stroke: "#FB5700", strokeWidth: 1, strokeDasharray: "4 4" }}
+                    content={<ChartTooltipContent hideLabel />}
+                  />
+                  <Area
+                    dataKey="revenue"
+                    type="monotone"
+                    stroke="#FB5700"
+                    strokeWidth={2.5}
+                    fill="url(#adminRevenueFill)"
+                    dot={{ r: 3, fill: "#FB5700" }}
+                    activeDot={{ r: 5, stroke: "#FB5700", strokeWidth: 2, fill: "#FFFFFF" }}
+                  />
+                </AreaChart>
+              </ChartContainer>
+            ) : (
+              <EmptyState label="No revenue recorded yet" />
+            )}
+
+            <div className="mt-5 border-t border-neutral-100 pt-4 dark:border-neutral-800">
+              {revenueTrend !== null ? (
+                <div
+                  className={cn(
+                    "flex items-center gap-1.5 text-sm font-medium",
+                    revenueTrend >= 0 ? "text-emerald-600" : "text-red-600"
+                  )}
+                >
+                  {revenueTrend >= 0 ? (
+                    <TrendingUp className="h-4 w-4" />
+                  ) : (
+                    <TrendingDown className="h-4 w-4" />
+                  )}
+                  {revenueTrend >= 0 ? "Trending up" : "Trending down"} by{" "}
+                  {Math.abs(revenueTrend).toFixed(1)}% vs last month
+                </div>
+              ) : (
+                <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">
+                  Not enough data yet for a month-over-month comparison
+                </p>
+              )}
+              <p className="mt-0.5 text-xs text-neutral-400 dark:text-neutral-500">
+                Showing total revenue for the year to date
+              </p>
+            </div>
+          </div>
+
+          {/* Order status */}
+          <div className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="mb-1 flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-amber-500" />
+              <h2 className="text-base font-semibold text-neutral-900 dark:text-white">
+                Order Status
+              </h2>
+            </div>
+            <p className="mb-5 text-xs text-neutral-500 dark:text-neutral-400">
+              Distribution over the last 30 days
+            </p>
+
+            {statusData.length > 0 ? (
+              <>
+                <div className="relative mx-auto max-w-[220px]">
+                  <ChartContainer config={chartConfig} className="mx-auto aspect-square max-h-[220px]">
+                    <PieChart>
+                      <ChartTooltip content={<ChartTooltipContent nameKey="status" hideLabel />} />
+                      <Pie
+                        data={statusData}
+                        dataKey="count"
+                        nameKey="status"
+                        innerRadius={62}
+                        outerRadius={90}
+                        strokeWidth={3}
+                        stroke="#FFFFFF"
+                        paddingAngle={statusData.length > 1 ? 2 : 0}
+                      />
+                    </PieChart>
+                  </ChartContainer>
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-2xl font-semibold tabular-nums text-neutral-900 dark:text-white">
+                      {recentOrders.length}
+                    </span>
+                    <span className="text-[11px] text-neutral-400">orders</span>
+                  </div>
                 </div>
 
-                <Card className="shadow-lg border-0">
-                    <CardHeader className="border-b pb-4">
-                        <div className="flex items-center space-x-2">
-                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: "#F6A719" }}></div>
-                            <CardTitle style={{ fontSize: "1.25rem", fontWeight: "600", color: "#FB5700" }}>Order Status</CardTitle>
-                        </div>
-                        <CardDescription style={{ color: "#F6A719" }}>Distribution of order statuses</CardDescription>
-                    </CardHeader>
-                    <CardContent className="pt-6">
-                        <ChartContainer config={chartConfig} className="mx-auto aspect-square max-h-[280px]">
-                            <PieChart>
-                                <ChartTooltip content={<ChartTooltipContent nameKey="status" hideLabel />} />
-                                <Pie
-                                    data={chartData}
-                                    dataKey="count"
-                                    nameKey="status"
-                                    innerRadius={60}
-                                    strokeWidth={2}
-                                    stroke="#FFFFFF"
-                                >
-                                    <LabelList dataKey="status" className="fill-white font-medium" stroke="none" fontSize={11} />
-                                </Pie>
-                            </PieChart>
-                        </ChartContainer>
-                    </CardContent>
-                    <CardFooter className="flex-col gap-2 text-sm border-t pt-4">
-                        <div className="flex items-center gap-2 leading-none font-medium" style={{ color: "#FB5700" }}>
-                            Updated in real-time <TrendingUp className="h-4 w-4" />
-                        </div>
-                        <div style={{ color: "#F6A719" }}>
-                            Live order status distribution
-                        </div>
-                    </CardFooter>
-                </Card>
+                <div className="mt-5 space-y-2.5">
+                  {statusData.map((item) => (
+                    <div key={item.status} className="flex items-center justify-between text-sm">
+                      <span className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
+                        <span
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: item.fill }}
+                        />
+                        {item.status}
+                      </span>
+                      <span className="font-medium tabular-nums text-neutral-900 dark:text-white">
+                        {item.count}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <EmptyState label="No orders in the last 30 days" />
+            )}
+
+            <div className="mt-5 border-t border-neutral-100 pt-4 dark:border-neutral-800">
+              <div className="flex items-center gap-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200">
+                <TrendingUp className="h-4 w-4 text-orange-500" />
+                Updated in real-time
+              </div>
+              <p className="mt-0.5 text-xs text-neutral-400 dark:text-neutral-500">
+                Refresh to pull the latest order activity
+              </p>
             </div>
+          </div>
         </div>
-    );
+      </div>
+    </div>
+  );
 };
 
 export default Dashboard;

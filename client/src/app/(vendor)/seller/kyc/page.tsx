@@ -32,7 +32,7 @@ const validationSchema = Yup.object({
 });
 
 const SellerKycForm = () => {
-    const {_id} = useSelector((state) => state.user);
+  const { _id } = useSelector((state: { user: { _id?: string } }) => state.user);
     const [coords, setCoords] = useState({})
   const initialValues = {
     location: '',

@@ -11,15 +11,41 @@ import {
   ShoppingCart,
   DollarSign,
   LogOut,
+  Users,
 } from "lucide-react"
 import Image from "next/image"
 import { Button } from "./ui/button"
 
+type UserRole = "admin" | "seller"
+
+type RootState = {
+  user: {
+    role: UserRole | ""
+  }
+}
+
+type NavItem = {
+  id: number
+  label: string
+  icon: "dashboard" | "users" | "products" | "orders" | "settings"
+  path: string
+}
+
+const icons = {
+  dashboard: BarChart3,
+  users: Users,
+  products: Package,
+  orders: ShoppingCart,
+  settings: DollarSign,
+}
+
+const typedNavItems = navItems as Record<UserRole, NavItem[]>
+
 const Sidebar = () => {
   const dispatch = useDispatch()
   const router = useRouter()
-  const {role} = useSelector(state=>state.user)
-    const handleLogout = () => {
+  const { role } = useSelector((state: RootState) => state.user)
+  const handleLogout = () => {
     dispatch(logoutUser())
     router.push("/login")
   }
@@ -63,17 +89,21 @@ const Sidebar = () => {
       </div>
 
       <nav className="flex-1 px-4 py-6 space-y-2">
-        {navItems[role]?.map(({ label, path, icon: Icon }, id) => (
+        {role && typedNavItems[role]?.map(({ label, path, icon }, id) => {
+          const Icon = icons[icon]
+
+          return (
           <Link
             key={id}
             href={path}
             className="group flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 font-medium hover:bg-orange-50 hover:text-orange-600 transition-all"
           >
-            {/* <Icon className="w-5 h-5 text-gray-500 group-hover:text-orange-500 transition-colors" /> */}
+            <Icon className="w-5 h-5 text-gray-500 group-hover:text-orange-500 transition-colors" />
             <span>{label}</span>
             <span className="ml-auto w-2 h-2 rounded-full bg-orange-400 opacity-0 group-hover:opacity-100 transition-opacity"></span>
           </Link>
-        ))}
+          )
+        })}
       </nav>
 
       <div className="p-4 border-t border-orange-100">

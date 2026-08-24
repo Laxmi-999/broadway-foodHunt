@@ -1,7 +1,7 @@
 import Sidebar from '@/components/sidebar'
 import React from 'react'
 
-const Layout = ({ children }) => {
+const Layout = ({ children }: { children: React.ReactNode }) => {
   return (
     <div className="flex">
       {/* Fixed sidebar */}

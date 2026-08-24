@@ -1,13 +1,8 @@
 "use client";
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 447a190aabf8db9367714cb8458c1572ade9f77f
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,16 +25,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Bell,
-  ChefHat,
-  Clock,
-  DollarSign,
-  Eye,
-  MoreHorizontal,
-  Search,
-  User,
-} from "lucide-react";
+import { Bell, ChefHat, Clock, Eye, MoreHorizontal, Search, User } from "lucide-react";
 import axios from "axios";
 import {
   Pagination,
@@ -50,14 +36,8 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { socket } from "@/lib/socket";
 
-type OrderStatus =
-  | "Pending"
-  | "Preparing"
-  | "Ready"
-  | "Delivered"
-  | "Cancelled";
+type OrderStatus = "Pending" | "Preparing" | "Ready" | "Delivered" | "Cancelled";
 
 interface OrderItem {
   _id: string;
@@ -76,29 +56,24 @@ interface Order {
   paymentMethod: string;
 }
 
-const statusColors = {
-  Pending: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  Preparing: "bg-blue-100 text-blue-800 border-blue-200",
-  Ready: "bg-green-100 text-green-800 border-green-200",
-  Delivered: "bg-gray-100 text-gray-800 border-gray-200",
-  Cancelled: "bg-red-100 text-red-800 border-red-200",
+const statusColors: Record<OrderStatus, string> = {
+  Pending: "bg-amber-50 text-amber-700 border-amber-200",
+  Preparing: "bg-blue-50 text-blue-700 border-blue-200",
+  Ready: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  Delivered: "bg-neutral-100 text-neutral-600 border-neutral-200",
+  Cancelled: "bg-red-50 text-red-700 border-red-200",
 };
+
+const formatPrice = (value: number) => `Rs. ${value.toFixed(2)}`;
 
 export default function SellerOrderPage() {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [totalOrders, setTotalOrders] = useState(0);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(4);
-  const [newNotification, setNewNotification] = useState(false);
-
-  useEffect(() => {
-    socket.on("connection");
-    socket.on("orderId", (orderId) => {
-      setNewNotification(true);
-    });
-  }, []);
+  const [totalPages, setTotalPages] = useState(1);
 
   // Pagination logic with ellipses
   const generatePaginationItems = () => {
@@ -109,7 +84,6 @@ export default function SellerOrderPage() {
     let startPage = Math.max(1, page - halfVisible);
     let endPage = Math.min(totalPages, page + halfVisible);
 
-    // Adjust if we're near the beginning or end
     if (endPage - startPage + 1 < maxVisiblePages) {
       if (startPage === 1) {
         endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
@@ -118,7 +92,6 @@ export default function SellerOrderPage() {
       }
     }
 
-    // Add first page and ellipsis if needed
     if (startPage > 1) {
       items.push(
         <PaginationItem key="1">
@@ -128,13 +101,12 @@ export default function SellerOrderPage() {
               e.preventDefault();
               setPage(1);
             }}
-            className={page === 1 ? "bg-primary text-primary-foreground" : ""}
+            className={page === 1 ? "bg-orange-600 text-white hover:bg-orange-700" : ""}
           >
             1
           </PaginationLink>
         </PaginationItem>
       );
-
       if (startPage > 2) {
         items.push(
           <PaginationItem key="ellipsis-start">
@@ -144,7 +116,6 @@ export default function SellerOrderPage() {
       }
     }
 
-    // Add visible page numbers
     for (let i = startPage; i <= endPage; i++) {
       items.push(
         <PaginationItem key={i}>
@@ -154,7 +125,7 @@ export default function SellerOrderPage() {
               e.preventDefault();
               setPage(i);
             }}
-            className={page === i ? "bg-primary text-primary-foreground" : ""}
+            className={page === i ? "bg-orange-600 text-white hover:bg-orange-700" : ""}
           >
             {i}
           </PaginationLink>
@@ -162,7 +133,6 @@ export default function SellerOrderPage() {
       );
     }
 
-    // Add ellipsis and last page if needed
     if (endPage < totalPages) {
       if (endPage < totalPages - 1) {
         items.push(
@@ -171,7 +141,6 @@ export default function SellerOrderPage() {
           </PaginationItem>
         );
       }
-
       items.push(
         <PaginationItem key={totalPages}>
           <PaginationLink
@@ -180,9 +149,7 @@ export default function SellerOrderPage() {
               e.preventDefault();
               setPage(totalPages);
             }}
-            className={
-              page === totalPages ? "bg-primary text-primary-foreground" : ""
-            }
+            className={page === totalPages ? "bg-orange-600 text-white hover:bg-orange-700" : ""}
           >
             {totalPages}
           </PaginationLink>
@@ -195,14 +162,11 @@ export default function SellerOrderPage() {
 
   const updateOrderStatus = async (orderId: string, newStatus: OrderStatus) => {
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_URL}/orders/${orderId}`,
-        { status: newStatus }
-      );
+      await axios.patch(`${process.env.NEXT_PUBLIC_API_URL}/orders/${orderId}`, {
+        status: newStatus,
+      });
       setOrders(
-        orders.map((order) =>
-          order._id === orderId ? { ...order, status: newStatus } : order
-        )
+        orders.map((order) => (order._id === orderId ? { ...order, status: newStatus } : order))
       );
     } catch (error) {
       console.error("Error updating order status:", error);
@@ -213,11 +177,10 @@ export default function SellerOrderPage() {
     try {
       const {
         data: { orders, totalDbOrders },
-      } = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/orders?pageSize=5&page=${page}`
-      );
+      } = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/orders?pageSize=5&page=${page}`);
       setOrders(orders);
-      setTotalPages(Math.ceil(totalDbOrders / 5)); // Assuming pageSize is 5
+      setTotalOrders(totalDbOrders);
+      setTotalPages(Math.ceil(totalDbOrders / 5));
     } catch (error) {
       console.error("Error fetching orders:", error);
     }
@@ -225,232 +188,118 @@ export default function SellerOrderPage() {
 
   useEffect(() => {
     fetchOrders();
+    // eslint-disable-next-line
   }, [page]);
 
   const getStatusIcon = (status: OrderStatus) => {
     switch (status) {
       case "Pending":
-        return <Clock className="h-4 w-4" />;
+        return <Clock className="h-3.5 w-3.5" />;
       case "Preparing":
-        return <ChefHat className="h-4 w-4" />;
+        return <ChefHat className="h-3.5 w-3.5" />;
       case "Ready":
-        return <Bell className="h-4 w-4" />;
+        return <Bell className="h-3.5 w-3.5" />;
       default:
         return null;
-<<<<<<< HEAD
-=======
-const orders = [
-  { id: "ORD-2024-001", customer: "Sarah Johnson", date: "2024-06-25", total: 479.97, items: ["Premium Headphones (x2)", "Bluetooth Speaker (x1)"], status: "Pending" },
-  { id: "ORD-2024-002", customer: "Michael Chen", date: "2024-06-24", total: 289.95, items: ["Wireless Mouse (x3)", "USB-C Cable (x2)"], status: "Processing" },
-  { id: "ORD-2024-003", customer: "Emily Davis", date: "2024-06-23", total: 199.99, items: ["Smart Watch (x1)"], status: "Shipped" },
-  { id: "ORD-2024-004", customer: "John Smith", date: "2024-06-22", total: 349.50, items: ["Gaming Keyboard (x1)", "Mouse Pad (x1)"], status: "Delivered" },
-  { id: "ORD-2024-005", customer: "Anna Lee", date: "2024-06-21", total: 150.00, items: ["Power Bank (x1)"], status: "Cancelled" },
-]
-
-const Orders = () => {
-  const getStatusCount = (status) => orders.filter(order => order.status === status).length;
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "Pending": return "bg-gradient-to-r from-orange-100 to-orange-200 text-orange-700";
-      case "Processing": return "bg-gradient-to-r from-orange-200 to-orange-300 text-orange-800";
-      case "Shipped": return "bg-gradient-to-r from-orange-300 to-orange-400 text-orange-900";
-      case "Delivered": return "bg-gradient-to-r from-orange-400 to-orange-500 text-white";
-      case "Cancelled": return "bg-gradient-to-r from-orange-500 to-orange-600 text-white";
-      default: return "bg-gray-100 text-gray-700";
->>>>>>> 3cc67fad624dfd05f7b615060c607d42cc077eeb
     }
   };
 
-  const pendingCount = 12
-  const preparingCount = 100
-  const readyCount = 20
-  const todayRevenue =123312
-  return (
-<<<<<<< HEAD
-    <div className="min-h-screen  w-full bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                Order Management
-              </h1>
-              <p className="text-gray-600">Manage your restaurant orders</p>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Badge variant="outline" className="text-sm">
-                <Bell className="h-4 w-4 mr-1" />
-                {pendingCount + preparingCount} Active Orders
-              </Badge>
-            </div>
-=======
-    <div className="px-6 py-8 w-full bg-gradient-to-br from-white to-gray-50 min-h-screen">
-      <div className="flex justify-between items-center mb-8">
-        <div className="flex items-center space-x-4">
-          <span className="text-3xl font-extrabold text-orange-600">📦</span>
-          <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">Order Management</h1>
-        </div>
-      </div>
+  // These reflect only the currently loaded page (5 orders) since the API
+  // doesn't yet expose global status/revenue aggregates — labeled accordingly below.
+  const pendingCount = orders.filter((o) => o.status === "Pending").length;
+  const preparingCount = orders.filter((o) => o.status === "Preparing").length;
+  const readyCount = orders.filter((o) => o.status === "Ready").length;
+  const pageRevenue = orders.reduce((sum, o) => sum + (o.price || 0), 0);
 
-      <div className="bg-white p-6 rounded-xl shadow-lg mb-8">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-          <div className="p-4 bg-gradient-to-r from-orange-100 to-orange-200 rounded-lg shadow-inner text-center">
-            <p className="text-gray-600 font-medium">Total Orders</p>
-            <p className="text-3xl font-bold text-orange-700 mt-2">{orders.length}</p>
-            <span className="text-2xl text-orange-600">📦</span>
-          </div>
-          <div className="p-4 bg-gradient-to-r from-orange-100 to-orange-200 rounded-lg shadow-inner text-center">
-            <p className="text-gray-600 font-medium">Pending</p>
-            <p className="text-3xl font-bold text-orange-700 mt-2">{getStatusCount("Pending")}</p>
-            <span className="text-2xl text-orange-600">⏰</span>
-          </div>
-          <div className="p-4 bg-gradient-to-r from-orange-200 to-orange-300 rounded-lg shadow-inner text-center">
-            <p className="text-gray-700 font-medium">Processing</p>
-            <p className="text-3xl font-bold text-orange-800 mt-2">{getStatusCount("Processing")}</p>
-            <span className="text-2xl text-orange-700">📦</span>
-          </div>
-          <div className="p-4 bg-gradient-to-r from-orange-300 to-orange-400 rounded-lg shadow-inner text-center">
-            <p className="text-gray-800 font-medium">Shipped</p>
-            <p className="text-3xl font-bold text-orange-900 mt-2">{getStatusCount("Shipped")}</p>
-            <span className="text-2xl text-orange-800">🚚</span>
-          </div>
-          <div className="p-4 bg-gradient-to-r from-orange-400 to-orange-500 rounded-lg shadow-inner text-center">
-            <p className="text-gray-900 font-medium">Delivered</p>
-            <p className="text-3xl font-bold text-white mt-2">{getStatusCount("Delivered")}</p>
-            <span className="text-2xl text-white">✅</span>
-          </div>
-          <div className="p-4 bg-gradient-to-r from-orange-500 to-orange-600 rounded-lg shadow-inner text-center">
-            <p className="text-white font-medium">Cancelled</p>
-            <p className="text-3xl font-bold text-white mt-2">{getStatusCount("Cancelled")}</p>
-            <span className="text-2xl text-white">❌</span>
->>>>>>> 3cc67fad624dfd05f7b615060c607d42cc077eeb
-=======
-    }
-  };
-
-  const pendingCount = 12;
-  const preparingCount = 100;
-  const readyCount = 20;
-  const todayRevenue = 123312;
+  const filteredOrders = orders.filter((order) => {
+    const matchesSearch =
+      order.bookedById?.email?.toLowerCase().includes(searchTerm.trim().toLowerCase()) ||
+      order._id.toLowerCase().includes(searchTerm.trim().toLowerCase());
+    const matchesStatus = statusFilter === "all" || order.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
   return (
-    <div className="min-h-screen  w-full bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                Order Management
-              </h1>
-              <p className="text-gray-600">Manage your restaurant orders</p>
-            </div>
-            <div className="flex items-center space-x-4">
-              <div
-                className="relative cursor-pointer"
-                onClick={() => setNewNotification(false)}
-              >
-                <Bell className="w-6 h-6" />
-                {newNotification && (
-                  <div className="bg-red-600 w-2 h-2 rounded-full absolute top-0.5 left-4" />
-                )}
-              </div>
-              <Badge variant="outline" className="text-sm">
-                <Bell className="h-4 w-4 mr-1" />
-                {pendingCount + preparingCount} Active Orders
-              </Badge>
-            </div>
->>>>>>> 447a190aabf8db9367714cb8458c1572ade9f77f
+    <div className="min-h-screen w-full bg-neutral-50 px-8 py-12">
+      <div className="mx-auto w-full max-w-[1600px]">
+        {/* Page header */}
+        <div className="mb-8 flex flex-col gap-4 border-b border-neutral-200 pb-6 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 sm:text-3xl">
+              Order Management
+            </h1>
+            <p className="mt-1 text-sm text-neutral-500">Manage your restaurant orders</p>
+          </div>
+          <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700">
+            <Bell className="h-4 w-4 text-orange-500" />
+            {totalOrders} Total Orders
+          </span>
+        </div>
+
+        {/* Stat strip — pending/preparing/ready reflect the current page only */}
+        <div className="mb-8 flex flex-wrap items-center gap-8 border-b border-neutral-200 pb-6">
+          <div>
+            <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-neutral-500">
+              <Clock className="h-3.5 w-3.5 text-amber-500" /> Pending
+            </p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900">
+              {pendingCount}
+            </p>
+            <p className="text-[11px] text-neutral-400">on this page</p>
+          </div>
+          <div className="h-10 w-px bg-neutral-200" />
+          <div>
+            <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-neutral-500">
+              <ChefHat className="h-3.5 w-3.5 text-blue-500" /> Preparing
+            </p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900">
+              {preparingCount}
+            </p>
+            <p className="text-[11px] text-neutral-400">on this page</p>
+          </div>
+          <div className="h-10 w-px bg-neutral-200" />
+          <div>
+            <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-neutral-500">
+              <Bell className="h-3.5 w-3.5 text-emerald-500" /> Ready
+            </p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900">
+              {readyCount}
+            </p>
+            <p className="text-[11px] text-neutral-400">on this page</p>
+          </div>
+          <div className="h-10 w-px bg-neutral-200" />
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Revenue</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900">
+              {formatPrice(pageRevenue)}
+            </p>
+            <p className="text-[11px] text-neutral-400">on this page</p>
           </div>
         </div>
-      </div>
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 447a190aabf8db9367714cb8458c1572ade9f77f
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <Clock className="h-8 w-8 text-yellow-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">
-                    Pending Orders
-                  </p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {pendingCount}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <ChefHat className="h-8 w-8 text-blue-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Preparing</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {preparingCount}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <Bell className="h-8 w-8 text-green-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Ready</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {readyCount}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <DollarSign className="h-8 w-8 text-green-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">
-                    Today's Revenue
-                  </p>
-                  <p className="text-2xl font-bold text-gray-900">321</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Filters and Search */}
-        <Card className="mb-6">
-          <CardContent className="p-6">
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+        {/* Orders panel */}
+        <div className="rounded-xl border border-neutral-200 bg-white">
+          <div className="flex flex-col gap-4 border-b border-neutral-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-neutral-900">Orders</h2>
+              <p className="text-xs text-neutral-500">{totalOrders} total</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
                 <Input
-                  placeholder="Search by customer email or order ID..."
+                  placeholder="Search by email or order ID..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
+                  className="w-full border-neutral-300 pl-9 focus-visible:ring-orange-200 sm:w-64"
                 />
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full sm:w-48">
+                <SelectTrigger className="w-full border-neutral-300 sm:w-40">
                   <SelectValue placeholder="Filter by status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Orders</SelectItem>
+                  <SelectItem value="all">All statuses</SelectItem>
                   <SelectItem value="Pending">Pending</SelectItem>
                   <SelectItem value="Preparing">Preparing</SelectItem>
                   <SelectItem value="Ready">Ready</SelectItem>
@@ -459,83 +308,78 @@ const Orders = () => {
                 </SelectContent>
               </Select>
             </div>
-          </CardContent>
-        </Card>
+          </div>
 
-        {/* Orders Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Orders 31232</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Order ID</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Items</TableHead>
+                  <TableHead>Price</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Time</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredOrders.length === 0 ? (
                   <TableRow>
-                    <TableHead>Order ID</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Items</TableHead>
-                    <TableHead>Price</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Time</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableCell colSpan={7} className="py-12 text-center text-sm text-neutral-500">
+                      No orders match your search or filter on this page.
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {orders.map((order) => (
+                ) : (
+                  filteredOrders.map((order) => (
                     <TableRow key={order._id}>
-                      <TableCell className="font-medium">{order._id}</TableCell>
+                      <TableCell className="font-mono text-xs text-neutral-500">
+                        {order._id.slice(-8)}
+                      </TableCell>
                       <TableCell>
-                        <div className="flex items-center space-x-2">
-                          <User className="h-4 w-4 text-gray-400" />
-                          <div>
-                            <p className="font-medium">
-                              {order.bookedById.email}
-                            </p>
-                          </div>
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4 text-neutral-400" />
+                          <span className="font-medium text-neutral-800">
+                            {order.bookedById?.email}
+                          </span>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="space-y-1">
-                          name
-                          {/* {order.items.slice(0, 2).map((item) => (
-                            <div key={item._id} className="text-sm">
+                        <div className="space-y-0.5 text-sm">
+                          {order.items?.slice(0, 2).map((item) => (
+                            <div key={item._id}>
                               {item.quantity}x {item.name}
                             </div>
                           ))}
-                          {order.items.length > 2 && (
-                            <div className="text-sm text-gray-500">+{order.items.length - 2} more items</div>
-                          )} */}
+                          {order.items?.length > 2 && (
+                            <div className="text-xs text-neutral-500">
+                              +{order.items.length - 2} more items
+                            </div>
+                          )}
                         </div>
                       </TableCell>
-                      <TableCell className="font-medium">312</TableCell>
+                      <TableCell className="font-medium text-neutral-900">
+                        {formatPrice(order.price)}
+                      </TableCell>
                       <TableCell>
                         <Badge
-                          className={`${
-                            statusColors[order.status]
-                          } flex items-center w-fit`}
+                          variant="outline"
+                          className={`flex w-fit items-center gap-1 ${statusColors[order.status]}`}
                         >
                           {getStatusIcon(order.status)}
-                          <span className="ml-1 capitalize">
-                            {order.status}
-                          </span>
+                          <span>{order.status}</span>
                         </Badge>
                       </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          <p>
-                            {new Date(order.createdAt).toLocaleString("en-US", {
-                              year: "numeric",
-                              month: "short",
-                              day: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </p>
-                        </div>
+                      <TableCell className="text-sm text-neutral-500">
+                        {new Date(order.createdAt).toLocaleString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-2">
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
                           <Button
                             variant="outline"
                             size="sm"
@@ -552,35 +396,27 @@ const Orders = () => {
                             <DropdownMenuContent align="end">
                               {order.status === "Pending" && (
                                 <DropdownMenuItem
-                                  onClick={() =>
-                                    updateOrderStatus(order._id, "Preparing")
-                                  }
+                                  onClick={() => updateOrderStatus(order._id, "Preparing")}
                                 >
                                   Start Preparing
                                 </DropdownMenuItem>
                               )}
                               {order.status === "Preparing" && (
                                 <DropdownMenuItem
-                                  onClick={() =>
-                                    updateOrderStatus(order._id, "Ready")
-                                  }
+                                  onClick={() => updateOrderStatus(order._id, "Ready")}
                                 >
                                   Mark as Ready
                                 </DropdownMenuItem>
                               )}
                               {order.status === "Ready" && (
                                 <DropdownMenuItem
-                                  onClick={() =>
-                                    updateOrderStatus(order._id, "Delivered")
-                                  }
+                                  onClick={() => updateOrderStatus(order._id, "Delivered")}
                                 >
                                   Mark as Delivered
                                 </DropdownMenuItem>
                               )}
                               <DropdownMenuItem
-                                onClick={() =>
-                                  updateOrderStatus(order._id, "Cancelled")
-                                }
+                                onClick={() => updateOrderStatus(order._id, "Cancelled")}
                               >
                                 Cancel Order
                               </DropdownMenuItem>
@@ -589,10 +425,13 @@ const Orders = () => {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="flex justify-center border-t border-neutral-100 px-6 py-4">
             <Pagination>
               <PaginationContent>
                 <PaginationItem>
@@ -615,143 +454,122 @@ const Orders = () => {
                       e.preventDefault();
                       if (page < totalPages) setPage(page + 1);
                     }}
-                    className={
-                      page === totalPages ? "pointer-events-none opacity-50" : ""
-                    }
+                    className={page === totalPages ? "pointer-events-none opacity-50" : ""}
                   />
                 </PaginationItem>
               </PaginationContent>
             </Pagination>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+      </div>
 
-        {/* Order Details Modal/Card */}
-        {selectedOrder && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-              <CardHeader>
-                <div className="flex justify-between items-center">
-                  <CardTitle>Order Details - {selectedOrder._id}</CardTitle>
-                  <Button
-                    variant="outline"
-                    onClick={() => setSelectedOrder(null)}
-                  >
-                    Close
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Customer Info */}
-                <div>
-                  <h3 className="font-semibold mb-2">Customer Information</h3>
-                  <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-                    <p>
-                      <strong>Email:</strong> {selectedOrder.bookedById.email}
-                    </p>
-                    <p>
-                      <strong>Payment Method:</strong>{" "}
-                      {selectedOrder.paymentMethod}
-                    </p>
-                  </div>
-                </div>
+      {/* Order Details Modal */}
+      {selectedOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-neutral-200 bg-white">
+            <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4">
+              <h2 className="text-lg font-semibold text-neutral-900">
+                Order Details — {selectedOrder._id.slice(-8)}
+              </h2>
+              <Button variant="outline" size="sm" onClick={() => setSelectedOrder(null)}>
+                Close
+              </Button>
+            </div>
 
-                {/* Order Items */}
-                <div>
-                  <h3 className="font-semibold mb-2">Order Items</h3>
-                  <div className="space-y-2">
-                    {selectedOrder.items.map((item) => (
-                      <div
-                        key={item._id}
-                        className="flex justify-between items-center p-3 bg-gray-50 rounded-lg"
-                      >
-                        <div>
-                          <p className="font-medium">{item.name}</p>
-                          <p className="text-sm text-gray-600">
-                            Quantity: {item.quantity}
-                          </p>
-                        </div>
-                        <p className="font-medium">321321</p>
+            <div className="space-y-6 px-6 py-6">
+              {/* Customer Info */}
+              <div>
+                <h3 className="mb-2 text-sm font-semibold text-neutral-900">
+                  Customer Information
+                </h3>
+                <div className="space-y-1.5 rounded-lg bg-neutral-50 p-4 text-sm text-neutral-700">
+                  <p>
+                    <span className="font-medium text-neutral-900">Email:</span>{" "}
+                    {selectedOrder.bookedById?.email}
+                  </p>
+                  <p>
+                    <span className="font-medium text-neutral-900">Payment Method:</span>{" "}
+                    {selectedOrder.paymentMethod}
+                  </p>
+                </div>
+              </div>
+
+              {/* Order Items */}
+              <div>
+                <h3 className="mb-2 text-sm font-semibold text-neutral-900">Order Items</h3>
+                <div className="space-y-2">
+                  {selectedOrder.items?.map((item) => (
+                    <div
+                      key={item._id}
+                      className="flex items-center justify-between rounded-lg bg-neutral-50 p-3 text-sm"
+                    >
+                      <div>
+                        <p className="font-medium text-neutral-900">{item.name}</p>
+                        <p className="text-neutral-500">Quantity: {item.quantity}</p>
                       </div>
-                    ))}
-                  </div>
+                      <p className="font-medium text-neutral-900">
+                        {formatPrice(item.quantity * item.discountedPrice)}
+                      </p>
+                    </div>
+                  ))}
                 </div>
+              </div>
 
-                {/* Order Summary */}
-                <div className="border-t pt-4">
-                  <div className="flex justify-between items-center text-lg font-semibold">
-                    <span>Total Amount:</span>
-                    <span>32132</span>
-                  </div>
-                </div>
+              {/* Order Summary */}
+              <div className="flex items-center justify-between border-t border-neutral-200 pt-4 text-base font-semibold text-neutral-900">
+                <span>Total Amount</span>
+                <span>{formatPrice(selectedOrder.price)}</span>
+              </div>
 
-                {/* Status Update Actions */}
-                <div className="flex gap-2 pt-4">
-                  {selectedOrder.status === "Pending" && (
-                    <Button
-                      onClick={() => {
-                        updateOrderStatus(selectedOrder._id, "Preparing");
-                        setSelectedOrder(null);
-                      }}
-                    >
-                      Start Preparing
-                    </Button>
-                  )}
-                  {selectedOrder.status === "Preparing" && (
-                    <Button
-                      onClick={() => {
-                        updateOrderStatus(selectedOrder._id, "Ready");
-                        setSelectedOrder(null);
-                      }}
-                    >
-                      Mark as Ready
-                    </Button>
-                  )}
-                  {selectedOrder.status === "Ready" && (
-                    <Button
-                      onClick={() => {
-                        updateOrderStatus(selectedOrder._id, "Delivered");
-                        setSelectedOrder(null);
-                      }}
-                    >
-                      Mark as Delivered
-                    </Button>
-                  )}
+              {/* Status Update Actions */}
+              <div className="flex flex-wrap gap-2 pt-2">
+                {selectedOrder.status === "Pending" && (
                   <Button
-                    variant="destructive"
+                    className="bg-orange-600 hover:bg-orange-700"
                     onClick={() => {
-                      updateOrderStatus(selectedOrder._id, "Cancelled");
+                      updateOrderStatus(selectedOrder._id, "Preparing");
                       setSelectedOrder(null);
                     }}
                   >
-                    Cancel Order
+                    Start Preparing
                   </Button>
-                </div>
-              </CardContent>
-            </Card>
-<<<<<<< HEAD
-=======
-          <div className="bg-orange-300 p-6 rounded-xl shadow-lg mb-8 flex items-center justify-center">
-            <div className="flex items-center  justify-between space-x-4 w-full ">
-              <input
-                type="text"
-                placeholder="Search by Order ID or Customer Name..."
-                className="w-full max-w-md p-3 border border-orange-200 rounded-lg bg-orange-100 focus:outline-none focus:ring-2 focus:ring-orange-300 placeholder-gray-400"
-              />
-              <select className="p-3 border border-orange-200 rounded-lg bg-orange-100 focus:outline-none focus:ring-2 focus:ring-orange-400 text-gray-600">
-                <option>All Status</option>
-                <option>Pending</option>
-                <option>Processing</option>
-                <option>Shipped</option>
-                <option>Delivered</option>
-                <option>Cancelled</option>
-              </select>
+                )}
+                {selectedOrder.status === "Preparing" && (
+                  <Button
+                    className="bg-orange-600 hover:bg-orange-700"
+                    onClick={() => {
+                      updateOrderStatus(selectedOrder._id, "Ready");
+                      setSelectedOrder(null);
+                    }}
+                  >
+                    Mark as Ready
+                  </Button>
+                )}
+                {selectedOrder.status === "Ready" && (
+                  <Button
+                    className="bg-orange-600 hover:bg-orange-700"
+                    onClick={() => {
+                      updateOrderStatus(selectedOrder._id, "Delivered");
+                      setSelectedOrder(null);
+                    }}
+                  >
+                    Mark as Delivered
+                  </Button>
+                )}
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    updateOrderStatus(selectedOrder._id, "Cancelled");
+                    setSelectedOrder(null);
+                  }}
+                >
+                  Cancel Order
+                </Button>
+              </div>
             </div>
->>>>>>> 3cc67fad624dfd05f7b615060c607d42cc077eeb
-=======
->>>>>>> 447a190aabf8db9367714cb8458c1572ade9f77f
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

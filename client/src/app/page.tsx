@@ -1,8 +1,5 @@
 // app/page.tsx
 "use client"; // This page also needs to be a client component if it directly uses client-side hooks or components
-
-import Navbar from "@/components/navbar";
-import { Button } from "@/components/ui/button";
 import dynamic from "next/dynamic";
 import { useMemo } from "react";
 
