@@ -18,7 +18,7 @@ import "leaflet-defaulticon-compatibility";
 import L from "leaflet";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,7 +34,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { addToCart } from "@/redux/reducerSlices/productSlice";
 import MapSidebar from "./map-sidebar";
-import { Skeleton } from "@/components/ui/skeleton"; // shadcn Skeleton
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface MapProps {
   position: [number, number];
@@ -50,7 +50,7 @@ interface Product {
   availableQuantity: number;
   quantity: number;
   category?: { emoji?: string };
-  sellerId?: { coords?: { lat?: number; lng?: number } };
+  sellerId?: { _id?: string; coords?: { lat?: number; lng?: number } };
 }
 
 interface FoodCategory {
@@ -73,7 +73,7 @@ interface ReduxState {
   };
 }
 
-const createEmojiIcon = (emoji = "🍽️", discountPercentage = 0) => {
+const createEmojiIcon = (emoji = "🍽️", discountPercentage = 0, itemCount = 1) => {
   return L.divIcon({
     html: `
       <div class="relative flex flex-col items-center">
@@ -83,6 +83,11 @@ const createEmojiIcon = (emoji = "🍽️", discountPercentage = 0) => {
         <div class="emoji-container" style="font-size: 42px; line-height: 1; position: relative;">
           ${emoji}
           <span class="ripple"></span>
+          ${
+            itemCount > 1
+              ? `<span style="position:absolute; top:-4px; right:-10px; background:#ea580c; color:white; font-size:11px; font-weight:700; line-height:1; padding:3px 6px; border-radius:9999px; box-shadow:0 1px 2px rgba(0,0,0,0.25);">${itemCount}</span>`
+              : ""
+          }
         </div>
       </div>
       <style>
@@ -90,7 +95,7 @@ const createEmojiIcon = (emoji = "🍽️", discountPercentage = 0) => {
         .ripple {
           position: absolute; top: 50%; left: 50%;
           width: 18px; height: 18px;
-          background: rgba(249, 115, 22, 0.55);
+          background: rgba(194, 65, 12, 0.8);
           border-radius: 50%;
           transform: translate(-50%, -50%);
           animation: ripple-effect 1.4s infinite;
@@ -101,11 +106,11 @@ const createEmojiIcon = (emoji = "🍽️", discountPercentage = 0) => {
           100% { transform: translate(-50%, -50%) scale(4.5); opacity: 0; }
         }
         .discount-text {
-          animation: pulse-text 1.8s infinite ease-in-out;
+          animation: pulse-text 1.2s infinite ease-in-out;
         }
         @keyframes pulse-text {
           0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.08); }
+          50% { transform: scale(1.2); }
         }
       </style>`,
     className: "custom-emoji-icon",
@@ -123,7 +128,7 @@ const MapComponent: React.FC<MapProps> = ({ position, zoom = 12 }) => {
   const { cart: reduxCart } = useSelector((state: ReduxState) => state.product);
   const [productsOfSelectedCategory, setProductsOfSelectedCategory] = useState<FoodCategory[]>([]);
   const [newNotification, setNewNotification] = useState(false);
-  const [isLoadingChips, setIsLoadingChips] = useState(true); // ← skeleton loading
+  const [isLoadingChips, setIsLoadingChips] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<FoodCategory>({
     name: "",
     emoji: "",
@@ -167,24 +172,6 @@ const MapComponent: React.FC<MapProps> = ({ position, zoom = 12 }) => {
     }
   };
 
-  const fetchProductChip = async (catId = "") => {
-    setIsLoadingChips(true);
-    try {
-      const { data } = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/product-chips?categoryId=${catId}`
-      );
-      if (data?.length > 0) {
-        fetchProductsByProductIds(data[0]?.product_ids);
-        setSelectedCategory(data[0] as FoodCategory);
-      }
-      setProductsOfSelectedCategory(data as FoodCategory[]);
-    } catch (err) {
-      console.error("Failed to fetch product chips:", err);
-    } finally {
-      setIsLoadingChips(false);
-    }
-  };
-
   const fetchProductsByProductIds = async (id?: string[]) => {
     const { data } = await axios.get(
       `${process.env.NEXT_PUBLIC_API_URL}/product-search?productIds=${id ? id?.join(",") : ""}`
@@ -196,12 +183,52 @@ const MapComponent: React.FC<MapProps> = ({ position, zoom = 12 }) => {
     setProductList(reducedArr);
   };
 
+  const fetchProductChip = async (catId = "") => {
+    setIsLoadingChips(true);
+    try {
+      const { data } = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/product-chips?categoryId=${catId}`
+      );
+      if (data?.length > 0) {
+        setSelectedCategory(data[0] as FoodCategory);
+        if (catId) {
+          fetchProductsByProductIds(data[0]?.product_ids);
+        }
+      }
+      setProductsOfSelectedCategory(data as FoodCategory[]);
+    } catch (err) {
+      console.error("Failed to fetch product chips:", err);
+    } finally {
+      setIsLoadingChips(false);
+    }
+  };
+
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
     fetchCategories();
     fetchProductChip();
+    fetchProductsByProductIds();
   }, []);
+
+  // Group products by their seller's coordinates so a seller with several
+  // items gets ONE marker (with a multi-item popup) instead of one
+  // exactly-overlapping marker per product.
+  const sellerLocations = useMemo(() => {
+    const groups = new Map<
+      string,
+      { lat: number; lng: number; items: Product[] }
+    >();
+    productList.forEach((item) => {
+      const lat = item.sellerId?.coords?.lat;
+      const lng = item.sellerId?.coords?.lng;
+      if (!lat || !lng) return;
+      const key = `${lat},${lng}`;
+      if (!groups.has(key)) groups.set(key, { lat, lng, items: [] });
+      groups.get(key)!.items.push(item);
+    });
+    return Array.from(groups.values());
+  }, [productList]);
 
   const handleLogout = () => dispatch(logoutUser());
 
@@ -317,97 +344,102 @@ const MapComponent: React.FC<MapProps> = ({ position, zoom = 12 }) => {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        {productList.map((item) => {
-          if (!item.sellerId?.coords?.lat || !item.sellerId?.coords?.lng)
-            return null;
+        {sellerLocations.map((group, idx) => {
+          // Badge the marker with the biggest discount in this seller's stack
+          const bestItem = group.items.reduce((max, item) =>
+            item.discountPercentage > max.discountPercentage ? item : max
+          );
           const customIcon = createEmojiIcon(
-            item.category?.emoji,
-            item.discountPercentage
+            bestItem.category?.emoji,
+            bestItem.discountPercentage,
+            group.items.length
           );
           return (
             <Marker
-              key={item._id}
-              position={[
-                item.sellerId.coords.lat,
-                item.sellerId.coords.lng,
-              ]}
+              key={`${group.lat}-${group.lng}-${idx}`}
+              position={[group.lat, group.lng]}
               icon={customIcon}
             >
-              <Popup maxWidth={320} className="rounded-xl overflow-hidden">
+              <Popup maxWidth={340} className="rounded-xl overflow-hidden">
                 <Card className="border-0 shadow-none">
-                  <CardContent className="p-4 space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="text-sm font-semibold text-slate-800 leading-tight">
-                        {item.name}
-                      </h3>
-                      <span className="shrink-0 text-xs font-medium bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
-                        {item.availableQuantity} left
-                      </span>
-                    </div>
+                  <CardContent className="p-4 space-y-1">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
+                      {group.items.length} {group.items.length === 1 ? "item" : "items"} from this seller
+                    </p>
+                    <div className="max-h-72 overflow-y-auto space-y-3 pr-1">
+                      {group.items.map((item) => (
+                        <div
+                          key={item._id}
+                          className="rounded-lg border border-slate-100 p-3 space-y-2"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <h3 className="text-sm font-semibold text-slate-800 leading-tight">
+                              {item.name}
+                            </h3>
+                            <span className="shrink-0 text-xs font-medium bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
+                              {item.availableQuantity} left
+                            </span>
+                          </div>
 
-                    {item.availableQuantity === 0 && (
-                      <p className="text-xs text-red-500 font-medium">
-                        Currently unavailable
-                      </p>
-                    )}
+                          {item.availableQuantity === 0 && (
+                            <p className="text-xs text-red-500 font-medium">
+                              Currently unavailable
+                            </p>
+                          )}
 
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-xs text-slate-400 line-through">
-                          रु {item.originalPrice}
-                        </span>
-                        <div className="text-lg font-bold text-orange-600">
-                          रु {item.discountedPrice}
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <span className="text-xs text-slate-400 line-through">
+                                रु {item.originalPrice}
+                              </span>
+                              <div className="text-base font-bold text-orange-600">
+                                रु {item.discountedPrice}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 bg-slate-100 rounded-full p-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 rounded-full hover:bg-white"
+                                onClick={() => handleDecrement(item)}
+                              >
+                                <Minus className="h-3 w-3" />
+                              </Button>
+                              <span className="w-5 text-center text-xs font-semibold">
+                                {item.quantity}
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 rounded-full hover:bg-white"
+                                onClick={() => handleIncrement(item)}
+                              >
+                                <Plus className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex-1 h-8 text-xs border-orange-200 text-orange-700 hover:bg-orange-50"
+                              onClick={() => handleClick(item)}
+                            >
+                              Add to Cart
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="flex-1 h-8 text-xs bg-orange-500 hover:bg-orange-600 text-white"
+                              disabled={item.availableQuantity < 1}
+                              onClick={() => handlePlaceOrder(item)}
+                            >
+                              Place Order
+                            </Button>
+                          </div>
                         </div>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 bg-slate-100 rounded-full p-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 rounded-full hover:bg-white"
-                          onClick={() => handleDecrement(item)}
-                        >
-                          <Minus className="h-3.5 w-3.5" />
-                        </Button>
-                        <span className="w-6 text-center text-sm font-semibold">
-                          {item.quantity}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 rounded-full hover:bg-white"
-                          onClick={() => handleIncrement(item)}
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2 pt-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 border-orange-200 text-orange-700 hover:bg-orange-50"
-                        onClick={() => handleClick(item)}
-                      >
-                        Add to Cart
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
-                        disabled={item.availableQuantity < 1}
-                        onClick={() => handlePlaceOrder(item)}
-                      >
-                        Place Order
-                      </Button>
-                    </div>
-
-                    <div className="text-right text-sm font-medium text-slate-600">
-                      Total:{" "}
-                      <span className="text-orange-600 font-bold">
-                        रु {item.discountedPrice * item.quantity}
-                      </span>
+                      ))}
                     </div>
                   </CardContent>
                 </Card>
@@ -420,7 +452,6 @@ const MapComponent: React.FC<MapProps> = ({ position, zoom = 12 }) => {
       {/* ========== TOP BAR ========== */}
       <div className="absolute top-0 left-0 right-0 z-[1000] pointer-events-none">
         <div className="max-w-7xl mx-auto px-4 pt-4 flex items-start justify-between gap-4">
-          {/* Search */}
           <div className="relative w-72 pointer-events-auto">
             <div className="flex items-center bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-sm rounded-2xl overflow-hidden focus-within:ring-2 focus-within:ring-orange-400/50 transition">
               <Search className="h-4 w-4 text-slate-400 ml-3.5 shrink-0" />
@@ -459,12 +490,10 @@ const MapComponent: React.FC<MapProps> = ({ position, zoom = 12 }) => {
             )}
           </div>
 
-          {/* Category Chips + Skeleton */}
           <div className="flex-1 flex justify-center pointer-events-auto max-w-2xl">
             <ScrollArea className="w-full whitespace-nowrap">
               <div className="flex items-center gap-2 px-1 py-1">
                 {isLoadingChips ? (
-                  // Skeleton loading for chips
                   Array.from({ length: 6 }).map((_, i) => (
                     <Skeleton
                       key={i}
@@ -501,7 +530,6 @@ const MapComponent: React.FC<MapProps> = ({ position, zoom = 12 }) => {
             </ScrollArea>
           </div>
 
-          {/* Right actions */}
           <div className="flex items-center gap-2.5 pointer-events-auto">
             {isLoggedIn ? (
               <>
